@@ -26,13 +26,14 @@ class Config:
     n_layer:int=20
     grad_steps:int=int(512/b_size)
     lr:float=3e-4
+    value_embed_rank:int=16
+    
 assert Config.n_head*Config.head_size==Config.n_embed
 
 class RotaryEmbedding(nn.Module):
     def __init__(self,dim,base=10000,max_seq_len=1024):
         super().__init__()
         half=dim//2
-
         freq=torch.arange(half,dtype=torch.float32)
         freq=1.0/(base**(freq/half))
 
@@ -48,20 +49,20 @@ class RotaryEmbedding(nn.Module):
     def forward(self,q,k):
         B,T,H,D=q.shape
         half=D//2
-
         cos=self.cos[:,:T].to(q.device)
         sin=self.sin[:,:T].to(q.device)
 
         q1,q2=q[...,:half],q[...,half:]
         k1,k2=k[...,:half],k[...,half:]
-
         q=torch.cat([q1*cos-q2*sin,q1*sin+q2*cos],dim=-1)
         k=torch.cat([k1*cos-k2*sin,k1*sin+k2*cos],dim=-1)
-
         return q,k
-
+        
+def Value_Embed_Layer(layer_id):
+    return Config.n_layer%2==(layer_idx)%2
+    
 class MultiHeadAttention(nn.Module):
-    def __init__(self,config):
+    def __init__(self,config,layer_id):
         super().__init__()
         self.n_head=config.n_head
         self.head_size=config.head_size
@@ -75,8 +76,9 @@ class MultiHeadAttention(nn.Module):
         self.k_norm=nn.RMSNorm(self.head_size,eps=1e-5)
 
         self.rope=RotaryEmbedding(self.head_size)
+        self.value_gate=nn.Linear(config.value_embed_rank,config.n_head) if Value_Embed_Layer(layer_id) else None
 
-    def forward(self,x):
+    def forward(self,x,ve):
         B,T,C=x.shape
         qkv=self.qkv(x)
         q,k,v=qkv.split(self.n_head*self.head_size,dim=-1)
@@ -87,7 +89,10 @@ class MultiHeadAttention(nn.Module):
 
         q=self.q_norm(q)
         k=self.k_norm(k)
-
+        if self.vaue_projection:
+            ve=ve.view(B,T,self.n_head,self.head_size)
+            gate=4*torch.sigmoid(self.value_gate((x[:,:,:self.config.value_embed_rank]))
+            v=v+gate.unqueeze(-1)*ve
         q,k=self.rope(q,k)
 
         q=q.transpose(1,2)
@@ -97,7 +102,7 @@ class MultiHeadAttention(nn.Module):
         y=F.scaled_dot_product_attention(q,k,v,is_causal=True)
         Vn=F.normalize(v, dim=-1)
 
-        out=y - (y * Vn).sum(dim=-1, keepdim=True) * Vn
+        out=y - (y * Vn).sum(dim=-1, keepdim=True)*Vn
         out=out.transpose(1,2).reshape(B,T,self.n_head*self.head_size)
         return self.proj(out)
 
@@ -116,25 +121,25 @@ class MLP(nn.Module):
         return x
 
 class Block(nn.Module):
-    def __init__(self,config):
+    def __init__(self,config,layer_id):
         super().__init__()
         self.PreNorm1=nn.RMSNorm(config.n_embed,eps=1e-5)
-        self.attention=MultiHeadAttention(config)
+        self.attention=MultiHeadAttention(config,layer_id)
         self.PreNorm2=nn.RMSNorm(config.n_embed,eps=1e-5)
         self.FeedForwardLayer=MLP(config)
         self.res_scale=1/math.sqrt(2*config.n_layer)
 
     def forward(self,x):
-        x=x+self.res_scale*self.attention(self.PreNorm1(x))
+        x=x+self.res_scale*self.attention(self.PreNorm1(x))[0]
         x=x+self.res_scale*self.FeedForwardLayer(self.PreNorm2(x))
-        return x
+        return 
 
 class GPT(nn.Module):
     def __init__(self,config):
         super().__init__()
         self.config=config
         self.embed=nn.Embedding(config.vocab_size,config.n_embed)
-        self.blocks=nn.Sequential(*[Block(config) for _ in range(config.n_layer)])
+        self.blocks=nn.Sequential(*[Block(config,layer_id+1) for layer_id in range(config.n_layer)])
         self.final_norm=nn.RMSNorm(config.n_embed,eps=1e-5)
         self.Dense=nn.Linear(config.n_embed,config.vocab_size,bias=False)
 
