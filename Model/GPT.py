@@ -89,10 +89,12 @@ class MultiHeadAttention(nn.Module):
 
         q=self.q_norm(q)
         k=self.k_norm(k)
+        
         if self.vaue_projection:
             ve=ve.view(B,T,self.n_head,self.head_size)
             gate=4*torch.sigmoid(self.value_gate((x[:,:,:self.config.value_embed_rank]))
             v=v+gate.unqueeze(-1)*ve
+            ve=v
         q,k=self.rope(q,k)
 
         q=q.transpose(1,2)
@@ -104,7 +106,7 @@ class MultiHeadAttention(nn.Module):
 
         out=y - (y * Vn).sum(dim=-1, keepdim=True)*Vn
         out=out.transpose(1,2).reshape(B,T,self.n_head*self.head_size)
-        return self.proj(out)
+        return [self.proj(out),ve]
 
 class MLP(nn.Module):
     def __init__(self,config):
@@ -129,20 +131,21 @@ class Block(nn.Module):
         self.FeedForwardLayer=MLP(config)
         self.res_scale=1/math.sqrt(2*config.n_layer)
 
-    def forward(self,x):
-        x=x+self.res_scale*self.attention(self.PreNorm1(x))[0]
+    def forward(self,x,ve):
+        logits,ve=self.attention(self.PreNorm1(x),ve)
+        x=x+self.res_scale*logits
         x=x+self.res_scale*self.FeedForwardLayer(self.PreNorm2(x))
-        return 
+        return [x,ve]
 
 class GPT(nn.Module):
     def __init__(self,config):
         super().__init__()
         self.config=config
         self.embed=nn.Embedding(config.vocab_size,config.n_embed)
-        self.blocks=nn.Sequential(*[Block(config,layer_id+1) for layer_id in range(config.n_layer)])
+        self.blocks=nn.ModuleList([Block(config,layer_id+1) for layer_id in range(config.n_layer)])
         self.final_norm=nn.RMSNorm(config.n_embed,eps=1e-5)
         self.Dense=nn.Linear(config.n_embed,config.vocab_size,bias=False)
-
+        self.ve=torch.zeros(config.b_size,config.cwl,self.n_head,self.head_size)
         self.apply(self._init_weights)
         self.Dense.weight=self.embed.weight
 
@@ -157,7 +160,9 @@ class GPT(nn.Module):
 
     def forward(self,x):
         x=self.embed(x)
-        x=self.blocks(x)
+        
+        for i in self.blocks:
+              x,self.ve=self.blocks[i](x,self.ve)
         x=self.final_norm(x)
         return self.Dense(x)
 
