@@ -1,15 +1,18 @@
+"""
+Dataset download and tokenisation utility.
+
+Streams the nvidia/Nemotron-ClimbMix dataset and splits it into 100-million-
+token shards using all available CPU cores. Each shard is saved as a uint16
+NumPy array with a BOS token prepended to every document. Running this script
+to completion produces ~50 shards (~5 billion tokens total).
+"""
+
 import multiprocessing
 import math
 from datasets import load_dataset
 import os
 from transformers import AutoTokenizer
 import numpy as np
-
-''' The code in this file is used to create 100 million token shards from the Nemotron-ClimbMix dataset.
-The dataset is streamed and sharded using the number of CPU cores available. 
-Each shard is saved as a numpy array of uint16 tokens, with a bos token at the beginning of each shard. 
-
-The process is repeated until 50 shards are created, which will contain a total of ~5 billion tokens.'''
 
 tok=AutoTokenizer.from_pretrained("gpt2")
 bos_id=tok.bos_token_id
