@@ -1,3 +1,15 @@
+"""
+HybridOptimizer — AdamW + Muon combined optimiser.
+
+Parameter routing:
+  - 2-D+ weight matrices (excluding embeddings)     → Muon
+  - Norms, biases, and 1-D parameters               → AdamW (no weight decay)
+  - All other < 2-D parameters                       → AdamW (with weight decay)
+
+Exposes the same `zero_grad`, `step`, and `state_dict` interface as a standard
+PyTorch optimiser so it can be used as a drop-in replacement in the training loop.
+"""
+
 class HybridOptimizer:
     def __init__(self,model,lr=Config.lr,weight_decay=0.01):
         adamw_decay=[]
