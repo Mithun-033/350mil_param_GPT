@@ -1,3 +1,16 @@
+"""
+Training loop for the 350M-parameter GPT model.
+
+Trains on tokenised numpy shards produced by DataDownload.py using a
+HybridOptimizer (AdamW + Muon). The learning-rate schedule consists of a
+linear warm-up phase followed by cosine annealing down to 10 % of peak LR.
+
+Gradient accumulation is used to reach an effective batch size of 512*1024 tokens.
+Checkpoints are saved every 100 gradient steps; validation loss and training
+loss curves are written to JSON and plotted at the end of training.
+"""
+''' TODO
+Integrate with DataDownload'''
 import torch
 import torch.nn as nn
 import HybridOptimizer from Muon
