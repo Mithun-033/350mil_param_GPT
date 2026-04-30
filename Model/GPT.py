@@ -1,3 +1,20 @@
+"""
+GPT — 350 Million Parameter Language Model
+===========================================
+Implements a GPT-style decoder-only transformer with the following design choices:
+
+- Rotary Position Embeddings (RoPE) for relative position encoding
+- QK-RMSNorm for stabilised attention logits
+- Value Embedding (VE) propagation across alternating layers
+- Squared ReLU (ReGLU-free) activation in the MLP blocks
+- Flash / memory-efficient scaled dot-product attention via torch.backends.cuda
+- Residual scaling (1/sqrt(2 * n_layer)) on every block output
+- Weight-tied input embedding and output projection (Dense layer)
+- XSA (Exclusive Self Attention)
+- 
+Architecture hyperparameters are centralised in the `Config` dataclass.
+"""
+
 import torch
 import torch.nn as nn
 import numpy as np
